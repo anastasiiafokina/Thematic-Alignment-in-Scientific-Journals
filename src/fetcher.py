@@ -1,6 +1,4 @@
 """
-fetcher.py
-----------
 Fetches paper abstracts from Semantic Scholar API
 for a given journal (venue) and time range.
 """
@@ -9,6 +7,11 @@ import time
 import requests
 import pandas as pd
 from pathlib import Path
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 
 class SemanticScholarFetcher:
@@ -19,10 +22,11 @@ class SemanticScholarFetcher:
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
     FIELDS = "title,abstract,year,venue,externalIds"
 
-    def __init__(self, venue: str, year_start: int, year_end: int):
+    def __init__(self, venue: str, year_start: int, year_end: int, api_key: str = None):
         self.venue = venue
         self.year_start = year_start
         self.year_end = year_end
+        self.api_key = api_key
 
     def fetch(self, max_papers: int = 1000) -> pd.DataFrame:
         """
