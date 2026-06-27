@@ -65,3 +65,26 @@ class AlignmentScorer:
         top = sorted_df.head(n)
         bottom = sorted_df.tail(n)
         return top, bottom
+    def get_topic_stats(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Computes mean, std and count of alignment scores per topic.
+
+        Args:
+            df: DataFrame with 'topic' and 'alignment_score' columns
+
+        Returns:
+            DataFrame with topic statistics
+        """
+        stats = (
+            df[df["topic"] != -1]
+            .groupby("topic")["alignment_score"]
+            .agg(["mean", "std", "count"])
+            .reset_index()
+            .rename(columns={
+                "mean": "avg_alignment",
+                "std": "std_alignment",
+                "count": "n_papers"
+            })
+            .sort_values("topic")
+        )
+        return stats
