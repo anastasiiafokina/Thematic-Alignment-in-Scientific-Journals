@@ -4,12 +4,11 @@ for a given journal (venue) and time range.
 """
 
 import time
+import os
 import requests
 import pandas as pd
 from pathlib import Path
-
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
@@ -19,73 +18,82 @@ class SemanticScholarFetcher:
     Fetches papers from Semantic Scholar API filtered by venue and year range.
     """
 
-    BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-    FIELDS = "title,abstract,year,venue,externalIds"
+    BULK_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk"
+    FIELDS = "title,abstract,year,venue"
 
     def __init__(self, venue: str, year_start: int, year_end: int, api_key: str = None):
         self.venue = venue
         self.year_start = year_start
         self.year_end = year_end
-        self.api_key = api_key
+        self.api_key = api_key or os.getenv("S2_API_KEY")
 
     def fetch(self, max_papers: int = 1000) -> pd.DataFrame:
         """
-        Fetches papers and returns a cleaned DataFrame.
+        Fetches papers using bulk endpoint and returns a cleaned DataFrame.
         """
         papers = []
-        offset = 0
-        limit = 100  # max allowed per request
+        token = None
 
         print(f"Fetching papers from '{self.venue}' ({self.year_start}–{self.year_end})...")
 
         while len(papers) < max_papers:
             params = {
                 "query": "machine learning",
+                "venue": self.venue,
                 "fields": self.FIELDS,
-                "limit": limit,
-                "offset": offset,
+                "limit": 100,
+                "year": f"{self.year_start}-{self.year_end}",
             }
 
-            response = requests.get(self.BASE_URL, params=params, timeout=30)
+            if token:
+                params["token"] = token
 
-            if response.status_code != 200:
-                print(f"Error {response.status_code}: {response.text}")
+            headers = {"x-api-key": self.api_key} if self.api_key else {}
+
+            while True:
+                response = requests.get(
+                    self.BULK_URL,
+                    params=params,
+                    headers=headers,
+                    timeout=30
+                )
+
+                if response.status_code == 429:
+                    print("Rate limit hit, waiting 30 seconds...")
+                    time.sleep(30)
+                    continue
+
+                if response.status_code != 200:
+                    print(f"Error {response.status_code}: {response.text}")
+                    return pd.DataFrame(papers)
+
                 break
 
             data = response.json()
             batch = data.get("data", [])
+            token = data.get("token")
 
             if not batch:
                 print("No more results.")
                 break
 
             for paper in batch:
-                venue = paper.get("venue", "") or ""
-                year = paper.get("year") or 0
                 abstract = paper.get("abstract") or ""
+                year = paper.get("year") or 0
 
-                # Filter by venue name and year range
-                if (
-                    "journal of machine learning research" in venue.lower()
-                    and self.year_start <= year <= self.year_end
-                    and len(abstract) > 50
-                ):
+                if len(abstract) > 50:
                     papers.append({
                         "paperId": paper.get("paperId", ""),
                         "title": paper.get("title", ""),
                         "abstract": abstract,
                         "year": year,
-                        "venue": venue,
+                        "venue": paper.get("venue", ""),
                     })
 
-            print(f"  Collected so far: {len(papers)} papers (offset {offset})")
-            offset += limit
+            print(f"  Collected: {len(papers)} papers")
+            time.sleep(2)
 
-            # Respect API rate limit
-            time.sleep(1)
-
-            # Stop if API has no more data
-            if offset >= data.get("total", 0):
+            if not token:
                 print("Reached end of results.")
                 break
 
