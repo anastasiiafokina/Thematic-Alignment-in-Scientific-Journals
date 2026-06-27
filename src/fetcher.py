@@ -15,7 +15,8 @@ load_dotenv()
 
 class SemanticScholarFetcher:
     """
-    Fetches papers from Semantic Scholar API filtered by venue and year range.
+    Fetches papers from Semantic Scholar Bulk Search API
+    filtered by venue and year range.
     """
 
     BULK_URL = "https://api.semanticscholar.org/graph/v1/paper/search/bulk"
@@ -29,10 +30,11 @@ class SemanticScholarFetcher:
 
     def fetch(self, max_papers: int = 1000) -> pd.DataFrame:
         """
-        Fetches papers using bulk endpoint and returns a cleaned DataFrame.
+        Fetches papers and returns a cleaned DataFrame.
         """
         papers = []
         token = None
+        headers = {"x-api-key": self.api_key} if self.api_key else {}
 
         print(f"Fetching papers from '{self.venue}' ({self.year_start}–{self.year_end})...")
 
@@ -48,8 +50,6 @@ class SemanticScholarFetcher:
             if token:
                 params["token"] = token
 
-            headers = {"x-api-key": self.api_key} if self.api_key else {}
-
             while True:
                 response = requests.get(
                     self.BULK_URL,
@@ -57,16 +57,10 @@ class SemanticScholarFetcher:
                     headers=headers,
                     timeout=30
                 )
-
                 if response.status_code == 429:
-                    print("Rate limit hit, waiting 30 seconds...")
-                    time.sleep(30)
+                    print("Rate limit, waiting 60s...")
+                    time.sleep(60)
                     continue
-
-                if response.status_code != 200:
-                    print(f"Error {response.status_code}: {response.text}")
-                    return pd.DataFrame(papers)
-
                 break
 
             data = response.json()
@@ -79,26 +73,24 @@ class SemanticScholarFetcher:
 
             for paper in batch:
                 abstract = paper.get("abstract") or ""
-                year = paper.get("year") or 0
-
                 if len(abstract) > 50:
                     papers.append({
                         "paperId": paper.get("paperId", ""),
                         "title": paper.get("title", ""),
                         "abstract": abstract,
-                        "year": year,
+                        "year": paper.get("year", 0),
                         "venue": paper.get("venue", ""),
                     })
 
             print(f"  Collected: {len(papers)} papers")
-            time.sleep(2)
+            time.sleep(3)
 
             if not token:
-                print("Reached end of results.")
+                print("Done.")
                 break
 
         df = pd.DataFrame(papers).drop_duplicates(subset="paperId")
-        print(f"\nDone. Total papers collected: {len(df)}")
+        print(f"\nTotal papers collected: {len(df)}")
         return df
 
     def save(self, df: pd.DataFrame, path: str = "data/abstracts.csv") -> None:
