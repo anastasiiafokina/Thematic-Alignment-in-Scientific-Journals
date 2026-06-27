@@ -6,6 +6,7 @@ and tracks how topic distributions evolve over time.
 import pandas as pd
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
+from hdbscan import HDBSCAN
 
 
 class TopicModeler:
@@ -13,12 +14,18 @@ class TopicModeler:
     Discovers topics in a corpus of abstracts using BERTopic.
     """
 
-    def __init__(self, n_topics: int = 20, language: str = "english"):
+    def __init__(self, n_topics: int = 10, language: str = "english"):
         """
         Args:
             n_topics: number of topics to extract (approximate)
             language: language of the corpus
         """
+        hdbscan_model = HDBSCAN(
+            min_cluster_size=3,
+            min_samples=1,
+            prediction_data=True
+        )
+
         vectorizer = CountVectorizer(
             stop_words=language,
             min_df=2,
@@ -26,9 +33,9 @@ class TopicModeler:
         )
 
         self.model = BERTopic(
-            language=language,
-            nr_topics=n_topics,
+            hdbscan_model=hdbscan_model,
             vectorizer_model=vectorizer,
+            nr_topics=n_topics,
             calculate_probabilities=True,
             verbose=True,
         )
@@ -61,12 +68,6 @@ class TopicModeler:
     def add_topics_to_df(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds topic assignments to the DataFrame.
-
-        Args:
-            df: DataFrame with paper metadata
-
-        Returns:
-            DataFrame with new 'topic' column
         """
         df = df.copy()
         df["topic"] = self.topics
@@ -75,12 +76,6 @@ class TopicModeler:
     def get_topics_over_time(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Computes how topic frequencies evolve year by year.
-
-        Args:
-            df: DataFrame with 'topic' and 'year' columns
-
-        Returns:
-            DataFrame with topic distribution per year
         """
         abstracts = df["abstract"].fillna("").tolist()
         timestamps = df["year"].tolist()
